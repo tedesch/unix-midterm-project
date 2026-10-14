@@ -29,7 +29,8 @@ def create_app():
     def receive_data():
         data = flask.request.get_json()
         # Process the received data
-        app.config['received_data'] = data  # Store the received data in the app's config
+        app.config['received_data'] = data  # Store the received data in the app's config 
+        # temporary solution we would like a queue to store data from multiple slaves
         return flask.jsonify({"success": True, "received_data": data}), 200
     @app.route("/sendDatatoDashboard", methods=["GET"])
     def send_data_to_dashboard():
