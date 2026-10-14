@@ -2,10 +2,6 @@ import flask
 import global_variables as globals
 from queue import Queue
 
-
-
-
-
 def create_app():
     mode = globals.mode
     app = flask.Flask(__name__)
@@ -42,7 +38,7 @@ def create_app():
             return flask.jsonify({"error": "No data received"}), 400
 
         if packetQueues.full():
-            for i in range(maxsizeQueue / 2):
+            for _ in range(maxsizeQueue // 2):
                 packetQueues.get()  # Remove the oldest data to make space for new data
 
         packetQueues.put(jsonData)
@@ -51,7 +47,11 @@ def create_app():
     #################
     #make it goood 
     #################
-        
+    @app.route("/printQueue", methods=["GET"])
+    def printQueue():
+        while True:
+            queue_contents = list(packetQueues.queue)
+            return flask.jsonify({"queue_contents": queue_contents}), 200
     @app.route("/sendDatatoDashboard", methods=["GET"])
     def send_data_to_dashboard():
         data = packetQueues.get() if not packetQueues.empty() else None
@@ -62,4 +62,3 @@ def create_app():
 
     return app
     
-

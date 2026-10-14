@@ -15,7 +15,6 @@ def send_data_to_master(data):
 
 def sendDataLoop():
     while True:
-        time.sleep(2) 
         json_data = get_data() # change once the function is set up to extract data and package it into a json format
         try:
             send_data_to_master(json_data)
