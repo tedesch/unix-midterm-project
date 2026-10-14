@@ -10,10 +10,10 @@ globals.mode = setMode.changeModeQuestion()
 if globals.mode == "master":
     app = apdef.create_app()
     if __name__ == '__main__':
-        app.run(debug=True)
+        app.run(debug=True, use_reloader=False)
  #not finished yet, add the json data extraction and packaging function there is a placeholder get_data function
 else :
-    req.sendDataLoop()
+    while True:
+        req.sendDataLoop()
     #not finished yet    
-
 

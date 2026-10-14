@@ -1,5 +1,4 @@
-
-
+# uselesssssss
 def askForMode ():
     mode = input("Enter slave or master: ")
     if mode != "slave" and mode != "master":

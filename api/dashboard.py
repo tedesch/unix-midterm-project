@@ -2,6 +2,9 @@
 import global_variables as globals
 import requests
 import time
+import os
+
+
 MasterUrl = globals.Url + "/sendDatatoDashboard"
 
 #placeholder data to send to master,set up the function to extract data and package it into a json format then set json_data = to that function
@@ -13,6 +16,9 @@ def receiveDataFromMaster(data):
     return response
 
 def sendDataLoop():
+
+    ##refactor this shiet
+    """
     while True:
         time.sleep(2) 
         json_data = get_data() # change once the function is set up to extract data and package it into a json format
@@ -20,3 +26,5 @@ def sendDataLoop():
             receiveDataFromMaster(json_data)
         except requests.exceptions.RequestException as e:
             print (f"Error receiving data from master: {e}")
+
+    """

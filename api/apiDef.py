@@ -1,14 +1,24 @@
 import flask
 import global_variables as globals
+from queue import Queue
+
+
+
+
+
 def create_app():
     mode = globals.mode
-    app = flask.Flask(__name__)  
+    app = flask.Flask(__name__)
+    maxsizeQueue = 20
+    packetQueues = Queue(maxsize=maxsizeQueue)  
+
+    
     @app.route('/')
     def index():
-        return flask.jsonify({"message": "this is a test"})
+        return flask.jsonify({"message": "Welcome to the Unix Midterm Project"})
 
     @app.route('/sayMode', methods=['GET'])
-    def get_mode():
+    def get_mode(): 
         return flask.jsonify({"message": mode})
 
     @app.route("/setMode", methods=["POST"])
@@ -26,15 +36,25 @@ def create_app():
             "is_slave": mode == "slave"
         })
     @app.route("/recivedata", methods=["POST"])
-    def receive_data():
-        data = flask.request.get_json()
-        # Process the received data
-        app.config['received_data'] = data  # Store the received data in the app's config 
-        # temporary solution we would like a queue to store data from multiple slaves
-        return flask.jsonify({"success": True, "received_data": data}), 200
+    def sendData():
+        jsonData = flask.request.get_json()
+        if jsonData is None:
+            return flask.jsonify({"error": "No data received"}), 400
+
+        if packetQueues.full():
+            for i in range(maxsizeQueue / 2):
+                packetQueues.get()  # Remove the oldest data to make space for new data
+
+        packetQueues.put(jsonData)
+        
+        return flask.jsonify({"message": "Data received successfully"}), 200
+    #################
+    #make it goood 
+    #################
+        
     @app.route("/sendDatatoDashboard", methods=["GET"])
     def send_data_to_dashboard():
-        data = app.config.get('received_data')
+        data = packetQueues.get() if not packetQueues.empty() else None
         if data is None:
             return flask.jsonify({"error": "No data received yet"}), 404      
         return flask.jsonify(data), 200    
