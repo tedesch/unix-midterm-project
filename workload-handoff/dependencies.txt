@@ -1,9 +1,0 @@
-Required commands:
-/usr/bin/stress-ng
-/usr/bin/curl
-/usr/bin/systemd-notify
-
-Installed packages:
-curl	8.18.0-1ubuntu2.7
-stress-ng	0.20.01-1
-systemd	259.5-0ubuntu3.4
