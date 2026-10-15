@@ -5,7 +5,7 @@ import json
 
 async def package(metric_function):
     measurements = []
-    for _ in range(10):
+    for _ in range(100):
         measurement = await asyncio.to_thread(metric_function)
         measurements.append(measurement)
     return measurements

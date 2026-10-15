@@ -1,13 +1,14 @@
 const REFRESH_INTERVAL_MS = 2000;
 const ONLINE_THRESHOLD_SECONDS = 30;
 const HISTORY_POINTS = 30;
-
+// Adjust to match your master's route for starting a stress test.
 const API_URL = "/api/vms";
 const stressUrl = (name) => `/api/vms/${encodeURIComponent(name)}/stress`;
 
 const ICON_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>`;
 const ICON_THEME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>`;
 
+// Build the page shell here so a stale dashboard.html can never show the old layout.
 document.body.innerHTML = `
   <main class="shell">
     <header class="topbar">
@@ -41,9 +42,11 @@ const themeBtn = document.querySelector("#theme-btn");
 const chipsEl = document.querySelector("#chips");
 
 const netHistory = new Map(); // vm name -> { last, rates: [{up, down}] }
+const cpuHistory = new Map(); // vm name -> { t, values: [percent] }
 let featuredName = null;      // VM shown in the main panel (click a card name to change)
-const stressing = new Set();  // vm names with a stress test in flight
-let workloadToken = null;
+const pending = new Set();    // vm names whose stress request is in flight
+const stressErrors = new Map(); // vm name -> last error message for that VM
+const TOKEN_KEY = "vm-command-token";
 
 /* ---------- helpers ---------- */
 function latestNumber(values) {
@@ -105,6 +108,26 @@ function trackNetwork(vm) {
   }
   if (!last || t > last.t) entry.last = { t, sent, recv };
   netHistory.set(vm.name, entry);
+}
+
+/* ---------- CPU history tracking ---------- */
+// The slave may only send a few recent values, so keep our own longer history.
+function trackCpu(vm) {
+  const raw = (vm.metrics || {})["cpu-metric"];
+  const t = Number(vm.updated_at);
+  const latest = latestNumber(raw);
+  let entry = cpuHistory.get(vm.name);
+  if (!entry) {
+    const seed = (Array.isArray(raw) ? raw : []).map(Number).filter(Number.isFinite);
+    entry = { t, values: seed.slice(-HISTORY_POINTS) };
+    cpuHistory.set(vm.name, entry);
+    return;
+  }
+  if (latest !== null && Number.isFinite(t) && t > entry.t) {
+    entry.values.push(latest);
+    entry.values = entry.values.slice(-HISTORY_POINTS);
+    entry.t = t;
+  }
 }
 
 /* ---------- chart geometry (viewBox is 100 x 40, stretched to fit) ---------- */
@@ -189,7 +212,7 @@ function networkPanel(vm, { foot = false } = {}) {
 
 function cpuPanel(vm) {
   const raw = (vm.metrics || {})["cpu-metric"];
-  const series = (Array.isArray(raw) ? raw : []).map(Number).filter(Number.isFinite).slice(-HISTORY_POINTS);
+  const series = (cpuHistory.get(vm.name) || { values: [] }).values;
   const value = latestNumber(raw);
   let plot = `<div class="chart-empty">Collecting samples…</div>`;
   if (series.length > 1) {
@@ -206,7 +229,7 @@ function cpuPanel(vm) {
   return `
     <div class="chart-panel ${heatOf(value)}">
       <div class="panel-head">
-        <span class="panel-title">CPU, last ${HISTORY_POINTS} samples</span>
+        <span class="panel-title">CPU history</span>
         <span class="panel-value">${percent(value)}</span>
       </div>
       <div class="plot">${plot}</div>
@@ -217,12 +240,11 @@ function cpuPanel(vm) {
 function renderFeatured(vm) {
   const m = vm.metrics || {};
   const online = isOnline(vm);
-  const hostBadge = m["is_host"] ? `<span"></span>` : "";
   return `
     <article class="hero ${online ? "" : "offline"}">
       <div class="identity">
         <div>
-          <h2 class="hero-name"><span class="status-dot ${online ? "" : "offline"}" aria-hidden="true"></span>${escapeHtml(vm.name)}${hostBadge}</h2>
+          <h2 class="hero-name"><span class="status-dot ${online ? "" : "offline"}" aria-hidden="true"></span>${escapeHtml(vm.name)}</h2>
           <p class="seen">${seenText(vm, online)}</p>
         </div>
         <div class="gauges">
@@ -239,15 +261,15 @@ function renderFeatured(vm) {
 function renderCard(vm) {
   const m = vm.metrics || {};
   const online = isOnline(vm);
-  const stressStatus = vm.stress || {};
-  const busy = stressing.has(vm.name) || ["queued", "running", "started"].includes(stressStatus.status);
   const name = escapeHtml(vm.name);
-  const hostBadge = m["is_host"] ? `<span class="host-badge">HOST</span>` : "";
-  const stressButton = m["is_host"] ? "" : `
-        <button class="stress-btn" type="button" data-stress="${name}" ${busy ? "disabled" : ""}
-          title="${escapeHtml(stressStatus.message || "Start workload-simulator.service on this VM")}">
-          ${stressStatus.status === "started" ? "Workload active" : busy ? (stressStatus.status === "queued" ? "Queued…" : "Starting…") : "Run workload"}
-        </button>`;
+  const stress = vm.stress || {};
+  const state = pending.has(vm.name) ? "queued" : stress.status;
+  const busy = state === "queued" || state === "running";
+  const label = state === "queued" ? "Queued…" : state === "running" ? "Running…" : "Run stress test";
+  const problem = stressErrors.get(vm.name) || (stress.status === "failed" ? stress.message : "");
+  const button = vm.is_host
+    ? ""
+    : `<button class="stress-btn" type="button" data-stress="${name}" ${busy ? "disabled" : ""}>${label}</button>`;
   return `
     <article class="card ${online ? "" : "offline"}">
       <header class="card-head">
@@ -256,14 +278,14 @@ function renderCard(vm) {
             <button class="name-btn" type="button" data-feature="${name}" title="Show ${name} in the main panel">
               <span class="status-dot ${online ? "" : "offline"}" aria-hidden="true"></span>
               <span class="name-text">${name}</span>
-              ${hostBadge}
               <span class="go" aria-hidden="true">↑</span>
             </button>
           </h3>
           <span class="seen">${seenText(vm, online)}</span>
         </div>
-        ${stressButton}
+        ${button}
       </header>
+      ${problem ? `<p class="stress-msg" role="alert">${escapeHtml(problem)}</p>` : ""}
       <div class="card-body">
         <div class="bars">
           ${barRow("CPU", m["cpu-metric"])}
@@ -295,42 +317,44 @@ function renderProblem(title, detail) {
 }
 
 /* ---------- actions ---------- */
-async function runStressTest(name) {
-  if (!workloadToken) {
-    workloadToken = window.prompt("Enter the shared workload command token:");
-  }
-  if (!workloadToken) return;
-
-  stressing.add(name);
-  refreshDashboard();
+function readToken() {
+  try { return localStorage.getItem(TOKEN_KEY) || ""; } catch (e) { return ""; }
+}
+function writeToken(value) {
   try {
-    let response = await requestWorkload(name, workloadToken);
-    let result = await response.json();
-    if (response.status === 401) {
-      workloadToken = window.prompt("Token rejected. Enter the correct workload command token:");
-      if (!workloadToken) throw new Error("Workload command token was not provided");
-      response = await requestWorkload(name, workloadToken);
-      result = await response.json();
-    }
-    if (!response.ok) {
-      if (response.status === 401) workloadToken = null;
-      throw new Error(result.error || `Workload request failed (${response.status})`);
-    }
-    statusBtn.title = `Workload request ${result.status}`;
-  } catch (error) {
-    statusBtn.title = error.message;
-    window.alert(error.message);
-  } finally {
-    stressing.delete(name);
-    refreshDashboard();
-  }
+    if (value) localStorage.setItem(TOKEN_KEY, value); else localStorage.removeItem(TOKEN_KEY);
+  } catch (e) { /* storage unavailable */ }
 }
 
-function requestWorkload(name, token) {
-  return fetch(stressUrl(name), {
-    method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
-  });
+async function runStressTest(name) {
+  let token = readToken();
+  if (!token) {
+    token = (window.prompt("Enter the command token to run a stress test:") || "").trim();
+    if (!token) return;
+    writeToken(token);
+  }
+  stressErrors.delete(name);
+  pending.add(name);
+  refreshDashboard();
+  try {
+    const response = await fetch(stressUrl(name), {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 401) {
+      writeToken("");
+      throw new Error("Wrong command token. Click again to enter it.");
+    }
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `Stress test failed (${response.status})`);
+    }
+  } catch (error) {
+    stressErrors.set(name, error.message);
+  } finally {
+    pending.delete(name);
+    refreshDashboard();
+  }
 }
 
 document.addEventListener("click", (event) => {
@@ -399,8 +423,11 @@ async function refreshDashboard() {
     if (!response.ok) throw new Error(`${API_URL} returned ${response.status}`);
     const vms = normalizeVms(await response.json());
     vms.forEach(trackNetwork);
-    for (const name of [...netHistory.keys()]) {
-      if (!vms.some((vm) => vm.name === name)) netHistory.delete(name);
+    vms.forEach(trackCpu);
+    for (const history of [netHistory, cpuHistory]) {
+      for (const name of [...history.keys()]) {
+        if (!vms.some((vm) => vm.name === name)) history.delete(name);
+      }
     }
 
     const refocus = focusSelector();
