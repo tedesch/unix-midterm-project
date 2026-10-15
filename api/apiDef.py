@@ -66,18 +66,51 @@ def create_app():
             if vm[1].get("is_host"):
                 return flask.jsonify({"error": "Host workload triggers are not supported"}), 400
             current_status = stressStatuses.get(vm_name, {})
-            if current_status.get("status") in ("queued", "running", "started"):
+            if current_status.get("status") in (
+                "queued",
+                "running",
+                "started",
+                "stopping",
+                "stop_failed",
+            ):
                 return flask.jsonify({"error": "A workload is already active for this VM"}), 409
 
             command_id = str(uuid4())
             stressCommands[vm_name] = {"id": command_id, "type": "start_workload"}
             stressStatuses[vm_name] = {
                 "id": command_id,
+                "command_type": "start_workload",
                 "status": "queued",
                 "message": "Workload queued",
             }
 
         return flask.jsonify({"id": command_id, "status": "queued"}), 202
+
+    @app.route("/api/vms/<path:vm_name>/stress/stop", methods=["POST"])
+    def stop_workload(vm_name):
+        if not command_authorized():
+            return flask.jsonify({"error": "Valid command token required"}), 401
+
+        with packetLock:
+            vm = latestPackets.get(vm_name)
+            if vm is None or time() - vm[0] > 30:
+                return flask.jsonify({"error": "VM is not currently online"}), 404
+            if vm[1].get("is_host"):
+                return flask.jsonify({"error": "Host workload triggers are not supported"}), 400
+            current_status = stressStatuses.get(vm_name, {})
+            if current_status.get("status") not in ("started", "stop_failed"):
+                return flask.jsonify({"error": "No active workload is recorded for this VM"}), 409
+
+            command_id = str(uuid4())
+            stressCommands[vm_name] = {"id": command_id, "type": "stop_workload"}
+            stressStatuses[vm_name] = {
+                "id": command_id,
+                "command_type": "stop_workload",
+                "status": "stopping",
+                "message": "Stopping workload",
+            }
+
+        return flask.jsonify({"id": command_id, "status": "stopping"}), 202
 
     @app.route("/api/commands/<path:vm_name>", methods=["GET"])
     def get_vm_command(vm_name):
@@ -89,8 +122,13 @@ def create_app():
             if command is not None:
                 stressStatuses[vm_name] = {
                     "id": command["id"],
-                    "status": "running",
-                    "message": "Starting workload",
+                    "command_type": command["type"],
+                    "status": "stopping" if command["type"] == "stop_workload" else "running",
+                    "message": (
+                        "Stopping workload"
+                        if command["type"] == "stop_workload"
+                        else "Starting workload"
+                    ),
                 }
 
         return flask.jsonify({"command": command})
@@ -111,12 +149,17 @@ def create_app():
             status = stressStatuses.get(vm_name)
             if status is None or status.get("id") != command_id:
                 return flask.jsonify({"error": "Unknown workload command"}), 404
-            status["status"] = "started" if result["success"] else "failed"
-            status["message"] = (
-                "Workload service is active"
-                if result["success"]
-                else str(result.get("error", "Workload failed"))[:500]
-            )
+            stopping = status.get("command_type") == "stop_workload"
+            if result["success"]:
+                status["status"] = "stopped" if stopping else "started"
+                status["message"] = (
+                    "Workload service stopped"
+                    if stopping
+                    else "Workload service is active"
+                )
+            else:
+                status["status"] = "stop_failed" if stopping else "failed"
+                status["message"] = str(result.get("error", "Workload command failed"))[:500]
 
         return flask.jsonify({"status": status["status"]})
 

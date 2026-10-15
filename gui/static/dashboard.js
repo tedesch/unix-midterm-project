@@ -1,9 +1,9 @@
 const REFRESH_INTERVAL_MS = 2000;
 const ONLINE_THRESHOLD_SECONDS = 30;
 const HISTORY_POINTS = 30;
-// Adjust to match your master's route for starting a stress test.
 const API_URL = "/api/vms";
 const stressUrl = (name) => `/api/vms/${encodeURIComponent(name)}/stress`;
+const stopStressUrl = (name) => `${stressUrl(name)}/stop`;
 
 const ICON_REFRESH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>`;
 const ICON_THEME = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/></svg>`;
@@ -44,7 +44,7 @@ const chipsEl = document.querySelector("#chips");
 const netHistory = new Map(); // vm name -> { last, rates: [{up, down}] }
 const cpuHistory = new Map(); // vm name -> { t, values: [percent] }
 let featuredName = null;      // VM shown in the main panel (click a card name to change)
-const pending = new Set();    // vm names whose stress request is in flight
+const pending = new Map();    // vm names -> workload action whose request is in flight
 const stressErrors = new Map(); // vm name -> last error message for that VM
 const TOKEN_KEY = "vm-command-token";
 
@@ -155,7 +155,7 @@ const gridLines = () => [0.25, 0.5, 0.75].map((f) => `<line class="grid" x1="0" 
 function barRow(label, rawValue) {
   const value = latestNumber(rawValue);
   const clamped = value === null ? 0 : clamp(value, 0, 100);
-  const shown = value === null ? "--" : `${Math.round(value)}%`;
+  const shown = value === null ? "--" : `${value.toFixed(1)}%`;
   return `
     <div class="bar-row ${heatOf(value)}">
       <span class="bar-label">${label}</span>
@@ -170,7 +170,7 @@ function ring(label, rawValue) {
   const value = latestNumber(rawValue);
   const clamped = value === null ? 0 : clamp(value, 0, 100);
   const r = 36, c = 2 * Math.PI * r;
-  const shown = value === null ? "--" : Math.round(value);
+  const shown = value === null ? "--" : value.toFixed(1);
   return `
     <div class="gauge ${heatOf(value)}">
       <div class="ring" role="meter" aria-label="${label} usage" aria-valuenow="${clamped}" aria-valuemin="0" aria-valuemax="100">
@@ -269,13 +269,23 @@ function renderCard(vm) {
   const online = isOnline(vm);
   const name = escapeHtml(vm.name);
   const stress = vm.stress || {};
-  const state = pending.has(vm.name) ? "queued" : stress.status;
-  const busy = state === "queued" || state === "running";
-  const label = state === "queued" ? "Queued…" : state === "running" ? "Running…" : "Run stress test";
-  const problem = stressErrors.get(vm.name) || (stress.status === "failed" ? stress.message : "");
+  const state = stress.status;
+  const requestPending = pending.has(vm.name);
+  const action = pending.get(vm.name) || (state === "started" || state === "stop_failed" ? "stop" : "start");
+  const busy = requestPending || state === "queued" || state === "running" || state === "stopping";
+  const label = requestPending
+    ? pending.get(vm.name) === "stop" ? "Stopping…" : "Starting…"
+    : state === "queued" ? "Queued…"
+      : state === "running" ? "Starting…"
+        : state === "stopping" ? "Stopping…"
+        : state === "stop_failed" ? "Retry stop"
+        : state === "started" ? "Stop workload" : "Run workload";
+  const problem = stressErrors.get(vm.name) || (
+    stress.status === "failed" || stress.status === "stop_failed" ? stress.message : ""
+  );
   const button = vm.is_host
     ? ""
-    : `<button class="stress-btn" type="button" data-stress="${name}" ${busy ? "disabled" : ""}>${label}</button>`;
+    : `<button class="stress-btn" type="button" data-workload="${name}" data-action="${action}" ${busy ? "disabled" : ""}>${label}</button>`;
   return `
     <article class="card ${online ? "" : "offline"}">
       <header class="card-head">
@@ -332,18 +342,18 @@ function writeToken(value) {
   } catch (e) { /* storage unavailable */ }
 }
 
-async function runStressTest(name) {
+async function runWorkloadAction(name, action) {
   let token = readToken();
   if (!token) {
-    token = (window.prompt("Enter the command token to run a stress test:") || "").trim();
+    token = (window.prompt("Enter the command token to control workloads:") || "").trim();
     if (!token) return;
     writeToken(token);
   }
   stressErrors.delete(name);
-  pending.add(name);
+  pending.set(name, action);
   refreshDashboard();
   try {
-    const response = await fetch(stressUrl(name), {
+    const response = await fetch(action === "stop" ? stopStressUrl(name) : stressUrl(name), {
       method: "POST",
       headers: { Authorization: `Bearer ${token}` },
     });
@@ -353,7 +363,7 @@ async function runStressTest(name) {
     }
     if (!response.ok) {
       const body = await response.json().catch(() => ({}));
-      throw new Error(body.error || `Stress test failed (${response.status})`);
+      throw new Error(body.error || `Workload request failed (${response.status})`);
     }
   } catch (error) {
     stressErrors.set(name, error.message);
@@ -364,8 +374,8 @@ async function runStressTest(name) {
 }
 
 document.addEventListener("click", (event) => {
-  const btn = event.target.closest("[data-stress]");
-  if (btn && !btn.disabled) runStressTest(btn.dataset.stress);
+  const btn = event.target.closest("[data-workload]");
+  if (btn && !btn.disabled) runWorkloadAction(btn.dataset.workload, btn.dataset.action);
 });
 document.addEventListener("click", (event) => {
   const el = event.target.closest("[data-feature]");
@@ -412,7 +422,7 @@ function focusSelector() {
   const a = document.activeElement;
   if (!a || !a.dataset) return null;
   if (a.dataset.feature !== undefined) return `[data-feature="${CSS.escape(a.dataset.feature)}"]`;
-  if (a.dataset.stress !== undefined) return `[data-stress="${CSS.escape(a.dataset.stress)}"]`;
+  if (a.dataset.workload !== undefined) return `[data-workload="${CSS.escape(a.dataset.workload)}"]`;
   return null;
 }
 

@@ -5,7 +5,7 @@ import json
 
 async def package(metric_function):
     measurements = []
-    for _ in range(100):
+    for _ in range(50):
         measurement = await asyncio.to_thread(metric_function)
         measurements.append(measurement)
     return measurements
@@ -15,21 +15,20 @@ async def cpu():
 
 
 async def memory():
-    return await package(lambda: psutil.virtual_memory().percent)
+    return await asyncio.to_thread(lambda: psutil.virtual_memory().percent)
 
 
 async def disk():
-    return await package(lambda: psutil.disk_usage('/').percent)
+    return await asyncio.to_thread(lambda: psutil.disk_usage('/').percent)
 
 
 async def swap():
-    if psutil.swap_memory().total == 0:
-        return []
-    return await package(lambda: psutil.swap_memory().percent)
+    swap_stats = await asyncio.to_thread(psutil.swap_memory)
+    return swap_stats.percent if swap_stats.total else None
 
 
 async def network():
-    net_io = psutil.net_io_counters()
+    net_io = await asyncio.to_thread(psutil.net_io_counters)
     return {
         "bytes_sent": net_io.bytes_sent,
         "bytes_recv": net_io.bytes_recv
@@ -37,8 +36,8 @@ async def network():
 
 
 async def get_json_data():
-    cpu_data, memory_data, disk_data, swap_data, network_data = await asyncio.gather(
-        cpu(),
+    cpu_data = await cpu()
+    memory_data, disk_data, swap_data, network_data = await asyncio.gather(
         memory(),
         disk(),
         swap(),

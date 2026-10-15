@@ -39,12 +39,13 @@ the master VM's firewall if slave VMs need to connect. Set each slave's
 
 ### Remote workload button
 
-The dashboard workload button queues a fixed command for the selected slave.
-The slave polls the master and runs
-`sudo -n systemctl start workload-simulator.service`; it does not accept
+The dashboard workload button queues a fixed start or stop command for the
+selected slave. The slave polls the master and runs only
+`sudo -n systemctl start workload-simulator.service` or
+`sudo -n systemctl stop workload-simulator.service`; it does not accept
 arbitrary shell commands. Install the `workload-simulator.service` unit on
 each Linux slave and grant the account running this project passwordless
-permission to start that specific service.
+permission to run only those service actions.
 The checked-in unit assumes the repository is at
 `/home/conno/unix-midterm-project` and runs the script from its `scripts`
 directory as `conno`; adjust `User`, `Group`, `WorkingDirectory`, and
@@ -53,6 +54,20 @@ After systemd accepts the start request, the dashboard shows `Workload active`
 instead of re-enabling the start button. The supplied workload script loops
 continuously; stop it on the slave with
 `sudo systemctl stop workload-simulator.service`.
+To let the dashboard stop it remotely, update the sudoers rule to permit both
+exact actions:
+
+```bash
+SYSTEMCTL_PATH="$(command -v systemctl)"
+printf '%s\n' "conno ALL=(root) NOPASSWD: $SYSTEMCTL_PATH start workload-simulator.service, $SYSTEMCTL_PATH stop workload-simulator.service" |
+  sudo tee /etc/sudoers.d/workload-simulator >/dev/null
+sudo chmod 0440 /etc/sudoers.d/workload-simulator
+sudo visudo -cf /etc/sudoers.d/workload-simulator
+```
+
+Memory, disk, and swap are sampled after the CPU sampling window, so they
+reflect the time the telemetry packet is sent. The dashboard displays one
+decimal place so smaller percentage changes are visible.
 
 Set the same non-empty `command_token` in the `[security]` section of the
 master and every slave's TOML config. Keep it private and use a different

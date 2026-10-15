@@ -41,13 +41,15 @@ def poll_workload_command():
     command = response.json().get("command")
     if command is None:
         return
-    if command.get("type") != "start_workload":
+    command_type = command.get("type")
+    if command_type not in ("start_workload", "stop_workload"):
         raise ValueError(f"Unsupported workload command: {command.get('type')}")
 
     command_id = command["id"]
+    systemctl_action = "start" if command_type == "start_workload" else "stop"
     try:
         subprocess.run(
-            ["sudo", "-n", "systemctl", "start", "workload-simulator.service"],
+            ["sudo", "-n", "systemctl", systemctl_action, "workload-simulator.service"],
             check=True,
             capture_output=True,
             text=True,

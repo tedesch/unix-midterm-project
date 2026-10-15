@@ -274,6 +274,9 @@ h1 {
 .stress-btn:hover:not(:disabled) { border-color: var(--warm); background: color-mix(in srgb, var(--warm) 12%, var(--surface-2)); }
 .stress-btn:disabled { color: var(--warm); border-color: var(--warm); cursor: progress; }
 
+.stress-message { margin-top: 6px; color: var(--warm); font-size: 12.5px; }
+
+
 .card-body { display: flex; flex-direction: column; gap: 18px; padding: 4px 20px 20px; }
 .bars { display: grid; gap: 11px; }
 .bar-row { display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px; align-items: center; gap: 12px; font-size: 13px; }
