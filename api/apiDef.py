@@ -66,7 +66,7 @@ def create_app():
             if vm[1].get("is_host"):
                 return flask.jsonify({"error": "Host workload triggers are not supported"}), 400
             current_status = stressStatuses.get(vm_name, {})
-            if current_status.get("status") in ("queued", "running"):
+            if current_status.get("status") in ("queued", "running", "started"):
                 return flask.jsonify({"error": "A workload is already active for this VM"}), 409
 
             command_id = str(uuid4())
@@ -111,9 +111,9 @@ def create_app():
             status = stressStatuses.get(vm_name)
             if status is None or status.get("id") != command_id:
                 return flask.jsonify({"error": "Unknown workload command"}), 404
-            status["status"] = "completed" if result["success"] else "failed"
+            status["status"] = "started" if result["success"] else "failed"
             status["message"] = (
-                "Workload started"
+                "Workload service is active"
                 if result["success"]
                 else str(result.get("error", "Workload failed"))[:500]
             )

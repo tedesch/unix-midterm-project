@@ -45,6 +45,10 @@ The slave polls the master and runs
 arbitrary shell commands. Install the `workload-simulator.service` unit on
 each Linux slave and grant the account running this project passwordless
 permission to start that specific service.
+After systemd accepts the start request, the dashboard shows `Workload active`
+instead of re-enabling the start button. The supplied workload script loops
+continuously; stop it on the slave with
+`sudo systemctl stop workload-simulator.service`.
 
 Set the same non-empty `command_token` in the `[security]` section of the
 master and every slave's TOML config. Keep it private and use a different

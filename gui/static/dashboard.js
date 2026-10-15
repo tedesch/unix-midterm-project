@@ -240,13 +240,13 @@ function renderCard(vm) {
   const m = vm.metrics || {};
   const online = isOnline(vm);
   const stressStatus = vm.stress || {};
-  const busy = stressing.has(vm.name) || ["queued", "running"].includes(stressStatus.status);
+  const busy = stressing.has(vm.name) || ["queued", "running", "started"].includes(stressStatus.status);
   const name = escapeHtml(vm.name);
   const hostBadge = m["is_host"] ? `<span class="host-badge">HOST</span>` : "";
   const stressButton = m["is_host"] ? "" : `
         <button class="stress-btn" type="button" data-stress="${name}" ${busy ? "disabled" : ""}
           title="${escapeHtml(stressStatus.message || "Start workload-simulator.service on this VM")}">
-          ${busy ? (stressStatus.status === "queued" ? "Queued…" : "Running…") : "Run workload"}
+          ${stressStatus.status === "started" ? "Workload active" : busy ? (stressStatus.status === "queued" ? "Queued…" : "Starting…") : "Run workload"}
         </button>`;
   return `
     <article class="card ${online ? "" : "offline"}">

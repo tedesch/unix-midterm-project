@@ -11,7 +11,7 @@ async def package(metric_function):
     return measurements
 
 async def cpu():
-    return await package(lambda: psutil.cpu_percent(interval=0.01))
+    return await package(lambda: psutil.cpu_percent(interval=0.1))
 
 
 async def memory():
@@ -23,6 +23,8 @@ async def disk():
 
 
 async def swap():
+    if psutil.swap_memory().total == 0:
+        return []
     return await package(lambda: psutil.swap_memory().percent)
 
 
