@@ -1,6 +1,8 @@
 #!/bin/bash
 
-LOG_FILE="$HOME/person2-lab/workload.log"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+LOG_FILE="$SCRIPT_DIR/workload.log"
+mkdir -p "$SCRIPT_DIR/swapdirectory"
 exec >> "$LOG_FILE" 2>&1
 
 HEARTBEAT_PID=""
@@ -71,7 +73,7 @@ do
     
     echo "[$(date)] Starting filesystem stress on root filesystem..."
     stress-ng --dir 1 \
-        --temp-path "$HOME/person2-lab/swapdirectory" \
+        --temp-path "$SCRIPT_DIR/swapdirectory" \
         --timeout 5s --metrics-brief &
     CHILD_PID=$!
     wait "$CHILD_PID"

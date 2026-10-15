@@ -53,6 +53,12 @@ def poll_workload_command():
             text=True,
             timeout=30,
         )
+    except subprocess.CalledProcessError as error:
+        details = (error.stderr or error.stdout or "").strip()
+        message = f"systemctl exited with status {error.returncode}"
+        if details:
+            message = f"{message}: {details}"
+        result = {"success": False, "error": message}
     except (OSError, subprocess.SubprocessError) as error:
         result = {"success": False, "error": str(error)}
     else:

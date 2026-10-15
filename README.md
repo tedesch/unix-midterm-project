@@ -45,6 +45,10 @@ The slave polls the master and runs
 arbitrary shell commands. Install the `workload-simulator.service` unit on
 each Linux slave and grant the account running this project passwordless
 permission to start that specific service.
+The checked-in unit assumes the repository is at
+`/home/conno/unix-midterm-project` and runs the script from its `scripts`
+directory as `conno`; adjust `User`, `Group`, `WorkingDirectory`, and
+`ExecStart` in the unit if a slave uses a different account or repository path.
 After systemd accepts the start request, the dashboard shows `Workload active`
 instead of re-enabling the start button. The supplied workload script loops
 continuously; stop it on the slave with

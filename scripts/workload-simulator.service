@@ -5,10 +5,10 @@ After=network.target
 [Service]
 Type=notify
 NotifyAccess=all
-User=doctorgamer01
-Group=doctorgamer01
-WorkingDirectory=/home/doctorgamer01/person2-lab
-ExecStart=/home/doctorgamer01/person2-lab/workload.sh
+User=conno
+Group=conno
+WorkingDirectory=/home/conno/unix-midterm-project/scripts
+ExecStart=/home/conno/unix-midterm-project/scripts/workload.sh
 Restart=always
 RestartSec=5
 WatchdogSec=30s
