@@ -43,6 +43,7 @@ const chipsEl = document.querySelector("#chips");
 const netHistory = new Map(); // vm name -> { last, rates: [{up, down}] }
 let featuredName = null;      // VM shown in the main panel (click a card name to change)
 const stressing = new Set();  // vm names with a stress test in flight
+let workloadToken = null;
 
 /* ---------- helpers ---------- */
 function latestNumber(values) {
@@ -295,18 +296,41 @@ function renderProblem(title, detail) {
 
 /* ---------- actions ---------- */
 async function runStressTest(name) {
+  if (!workloadToken) {
+    workloadToken = window.prompt("Enter the shared workload command token:");
+  }
+  if (!workloadToken) return;
+
   stressing.add(name);
   refreshDashboard();
   try {
-    const response = await fetch(stressUrl(name), { method: "POST" });
-    const result = await response.json();
-    if (!response.ok) throw new Error(result.error || `Workload request failed (${response.status})`);
+    let response = await requestWorkload(name, workloadToken);
+    let result = await response.json();
+    if (response.status === 401) {
+      workloadToken = window.prompt("Token rejected. Enter the correct workload command token:");
+      if (!workloadToken) throw new Error("Workload command token was not provided");
+      response = await requestWorkload(name, workloadToken);
+      result = await response.json();
+    }
+    if (!response.ok) {
+      if (response.status === 401) workloadToken = null;
+      throw new Error(result.error || `Workload request failed (${response.status})`);
+    }
+    statusBtn.title = `Workload request ${result.status}`;
   } catch (error) {
     statusBtn.title = error.message;
+    window.alert(error.message);
   } finally {
     stressing.delete(name);
     refreshDashboard();
   }
+}
+
+function requestWorkload(name, token) {
+  return fetch(stressUrl(name), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
 }
 
 document.addEventListener("click", (event) => {

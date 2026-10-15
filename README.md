@@ -55,6 +55,10 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 ```
 
 Without a matching token, the workload command endpoints reject requests.
+The dashboard prompts for this token the first time a workload is requested
+in a page session; it is kept in browser memory only. Use HTTPS or restrict
+dashboard access to a trusted private network, since plain HTTP does not
+protect the token in transit.
 
 Open `http://<master-ip>:5000/` in a browser to view the btop-inspired VM
 dashboard. It shows the latest CPU, memory, disk, swap, and network metrics
