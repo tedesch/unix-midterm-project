@@ -5,13 +5,9 @@ import requests
 import time
 import os
 
-
-MasterUrl = globals.Url + "/sendDatatoDashboard"
-
-#placeholder data to send to master,set up the function to extract data and package it into a json format then set json_data = to that function
-
 def receiveDataFromAPI(data):
-    response = requests.get(MasterUrl, json=data)
+    master_url = f"{globals.Url.rstrip('/')}/sendDatatoDashboard"
+    response = requests.get(master_url, json=data)
     print(f"Data sent to dashboard: {data}")
     return response
 

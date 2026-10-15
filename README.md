@@ -1,4 +1,79 @@
 # unix-midterm-project
 
+## Setup
 
-set up: run python -m pip install flask, python -m pip install psutil 
+Use Python 3.11 or newer, then install the project dependencies:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+## Run a VM
+
+Each VM loads its settings from `config/vm1.toml` by default. Copy that file
+for each VM, then specify the copy with `--config`:
+
+```powershell
+python main.py --config config/vm2.toml --name vm2 --mode slave --master-url http://10.0.0.5:5000
+```
+
+The command-line values are saved to the specified TOML file and loaded again
+on the next start. Omit them to reuse the saved values:
+
+```powershell
+python main.py --config config/vm2.toml
+```
+
+Supported options:
+
+- `--config`: TOML file for this VM (defaults to `config/vm1.toml` beside `main.py`).
+- `--name`: VM name.
+- `--mode`: `master` or `slave`.
+- `--master-url`: base URL used by this VM to contact the master.
+
+When running in master mode, the server listens on all network interfaces on
+port `5000` with Flask debug mode disabled. Allow inbound TCP port `5000` in
+the master VM's firewall if slave VMs need to connect. Set each slave's
+`--master-url` to the master's reachable IP address, such as
+`http://10.0.0.5:5000`.
+
+### Remote workload button
+
+The dashboard workload button queues a fixed command for the selected slave.
+The slave polls the master and runs
+`sudo -n systemctl start workload-simulator.service`; it does not accept
+arbitrary shell commands. Install the `workload-simulator.service` unit on
+each Linux slave and grant the account running this project passwordless
+permission to start that specific service.
+
+Set the same non-empty `command_token` in the `[security]` section of the
+master and every slave's TOML config. Keep it private and use a different
+random token for each deployment. Generate one with:
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+Without a matching token, the workload command endpoints reject requests.
+
+Open `http://<master-ip>:5000/` in a browser to view the btop-inspired VM
+dashboard. It shows the latest CPU, memory, disk, swap, and network metrics
+for each named VM and the master host itself, refreshes every two seconds,
+and marks a VM offline when it has not reported for 30 seconds. The host is
+shown with a `HOST` badge. The master keeps the latest packet per VM in
+memory; restarting the master clears the displayed telemetry until VMs send
+their next packets and host collection completes.
+
+The TOML format is:
+
+```toml
+[vm]
+name = "vm1"
+mode = "slave"
+
+[master]
+url = "http://localhost:5000"
+
+[security]
+command_token = "replace-with-a-long-random-token"
+```

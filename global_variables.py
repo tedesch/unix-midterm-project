@@ -4,3 +4,5 @@
 mode = "slave"
 #Url of the api server
 Url = "http://localhost:5000"
+name = "vm1"
+command_token = ""

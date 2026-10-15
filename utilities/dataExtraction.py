@@ -1,4 +1,5 @@
 import asyncio
+import global_variables as globals
 import psutil
 import json
 
@@ -7,7 +8,6 @@ async def package(metric_function):
     for _ in range(10):
         measurement = await asyncio.to_thread(metric_function)
         measurements.append(measurement)
-        # await asyncio.sleep(0.1)
     return measurements
 
 async def cpu():
@@ -43,6 +43,7 @@ async def get_json_data():
         network(),
     )
     data = {
+        "name": globals.name,
         "cpu-metric": cpu_data,
         "memory-metric": memory_data,
         "disk-metric": disk_data,
