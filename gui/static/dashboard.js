@@ -55,6 +55,12 @@ function latestNumber(values) {
   const value = Number(values[values.length - 1]);
   return Number.isFinite(value) ? value : null;
 }
+function averageNumber(values) {
+  if (typeof values === "number") return values;
+  if (!Array.isArray(values)) return null;
+  const samples = values.map(Number).filter(Number.isFinite);
+  return samples.length ? samples.reduce((sum, value) => sum + value, 0) / samples.length : null;
+}
 const percent = (v) => (v === null ? "--" : `${v.toFixed(v % 1 === 0 ? 0 : 1)}%`);
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const heatOf = (v) => (v === null ? "" : v >= 90 ? "heat-hot" : v >= 75 ? "heat-warm" : "");
@@ -115,7 +121,7 @@ function trackNetwork(vm) {
 function trackCpu(vm) {
   const raw = (vm.metrics || {})["cpu-metric"];
   const t = Number(vm.updated_at);
-  const latest = latestNumber(raw);
+  const average = averageNumber(raw);
   let entry = cpuHistory.get(vm.name);
   if (!entry) {
     const seed = (Array.isArray(raw) ? raw : []).map(Number).filter(Number.isFinite);
@@ -123,8 +129,8 @@ function trackCpu(vm) {
     cpuHistory.set(vm.name, entry);
     return;
   }
-  if (latest !== null && Number.isFinite(t) && t > entry.t) {
-    entry.values.push(latest);
+  if (average !== null && Number.isFinite(t) && t > entry.t) {
+    entry.values.push(average);
     entry.values = entry.values.slice(-HISTORY_POINTS);
     entry.t = t;
   }
@@ -213,7 +219,7 @@ function networkPanel(vm, { foot = false } = {}) {
 function cpuPanel(vm) {
   const raw = (vm.metrics || {})["cpu-metric"];
   const series = (cpuHistory.get(vm.name) || { values: [] }).values;
-  const value = latestNumber(raw);
+  const value = averageNumber(raw);
   let plot = `<div class="chart-empty">Collecting samples…</div>`;
   if (series.length > 1) {
     const c = coords(series, 100);
@@ -288,7 +294,7 @@ function renderCard(vm) {
       ${problem ? `<p class="stress-msg" role="alert">${escapeHtml(problem)}</p>` : ""}
       <div class="card-body">
         <div class="bars">
-          ${barRow("CPU", m["cpu-metric"])}
+          ${barRow("CPU avg", averageNumber(m["cpu-metric"]))}
           ${barRow("Disk", m["disk-metric"])}
           ${barRow("Memory", m["memory-metric"])}
           ${barRow("Swap", m["swap-metric"])}
