@@ -104,3 +104,34 @@ url = "http://localhost:5000"
 [security]
 command_token = "replace-with-a-long-random-token"
 ```
+### License
+To create the certificate and key for HTTPS, run:
+
+```bash
+sudo apt install -y nginx certbot python3-certbot-nginx
+
+sudo nano /etc/nginx/sites-available/flask-api
+
+```
+on the file type 
+```nginx
+server {
+    listen 80;
+    server_name api.example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Then run the following command to create the certificate and key:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/flask-api \
+  /etc/nginx/sites-enabled/flask-api

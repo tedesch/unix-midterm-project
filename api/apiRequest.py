@@ -10,8 +10,16 @@ from utilities.dataExtraction import get_json_data
 def get_data():
     return asyncio.run(get_json_data())
 
+def _request_verify() -> bool | str:
+    return globals.ca_cert if globals.ca_cert else True
+
 def send_data_to_master(data):
-    response = requests.post(f"{globals.Url.rstrip('/')}/recivedata", json=data)
+    response = requests.post(
+        f"{globals.Url.rstrip('/')}/recivedata",
+        json=data,
+        verify=_request_verify(),
+        timeout=10,
+    )
     return response
 
 def report_workload_result(command_id, result):
@@ -23,6 +31,7 @@ def report_workload_result(command_id, result):
         url,
         json=result,
         headers={"Authorization": f"Bearer {globals.command_token}"},
+        verify=_request_verify(),
         timeout=5,
     )
     response.raise_for_status()
@@ -35,6 +44,7 @@ def poll_workload_command():
     response = requests.get(
         url,
         headers={"Authorization": f"Bearer {globals.command_token}"},
+        verify=_request_verify(),
         timeout=5,
     )
     response.raise_for_status()

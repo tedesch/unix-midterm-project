@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from threading import Thread
 from time import monotonic, sleep
 
+from utilities.encryption import get_ssl_context
 import global_variables as globals
 import psutil
 from utilities.config import VMConfig, load_config, save_config
@@ -34,7 +35,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     )
     parser.add_argument(
         "--master-url",
-        help="Set and save the master server URL (for example, http://10.0.0.5:5000).",
+        help="Set and save the master server URL (for example, https://10.0.0.5:5000).",
+    )
+    parser.add_argument(
+        "--ca-cert",
+        help="Path to the CA certificate file used to verify the master's HTTPS certificate.",
     )
     args = parser.parse_args(argv)
 
@@ -48,6 +53,7 @@ def main(argv: Sequence[str] | None = None) -> None:
             else config.master_url
         ),
         command_token=config.command_token,
+        ca_cert=args.ca_cert if args.ca_cert is not None else config.ca_cert,
     )
     save_config(args.config, config)
 
@@ -55,6 +61,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     globals.mode = config.mode
     globals.Url = config.master_url
     globals.command_token = config.command_token
+    globals.ca_cert = config.ca_cert
     print(f"Starting VM {globals.name} in {globals.mode} mode")
 
     from api import apiDef as apdef
@@ -62,6 +69,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     from api import dashboard as dash
 
     if globals.mode == "master":
+        cert_path, key_path = get_ssl_context()
         app = apdef.create_app()
         record_telemetry = app.extensions["record_telemetry"]
 
@@ -80,7 +88,13 @@ def main(argv: Sequence[str] | None = None) -> None:
                 sleep(max(0, next_collection - monotonic()))
 
         Thread(target=collect_host_telemetry, name="host-telemetry", daemon=True).start()
-        app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
+        app.run(
+            host="0.0.0.0",
+            port=5000,
+            debug=False,
+            use_reloader=False,
+            ssl_context=(cert_path, key_path),
+        )
         dash.sendDataLoopToDashboard()
     else:
         req.sendDataLoop()

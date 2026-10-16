@@ -4,3 +4,5 @@ requests>=2.34.2
 queues>=0.6.3
 pyopenssl>=26.4.0
 flask-talisman>=1.1.0
+cryptography>=41.0.3
+Pathlib>=0.10.2

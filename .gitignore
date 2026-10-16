@@ -1,6 +1,28 @@
-# Ignore Python bytecode cache
+# Python cache and build artifacts
 __pycache__/
 *.py[cod]
-api/__pycache__
-utilities/__pycache__
-config
+*.pyo
+*.pyd
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Local config and generated runtime files
+config/
+certs/
+*.pem
+*.key
+*.crt
+*.csr
+
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Local logs and temporary files
+*.log
+tmp_*
+*.tmp
